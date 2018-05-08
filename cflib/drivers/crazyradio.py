@@ -105,7 +105,7 @@ class Crazyradio:
     P_M18DBM = 0
     P_M12DBM = 1
     P_M6DBM = 2
-    P_0DBM = 3
+    P_0DBM = 0
 
     def __init__(self, device=None, devid=0):
         """ Create object and scan for USB dongle if no device is supplied """

@@ -57,8 +57,8 @@ logger = logging.getLogger(__name__)
 
 _nr_of_retries = 100
 
-DEFAULT_ADDR_A = [0xe7, 0xe7, 0xe7, 0xe7, 0xe7]
-DEFAULT_ADDR = 0xE7E7E7E7E7
+DEFAULT_ADDR_A = [0xe7, 0xe7, 0xe7, 0xe7, 0xea]
+DEFAULT_ADDR = 0xE7E7E7E7EA
 
 
 class _SharedRadio():

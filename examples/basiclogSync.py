@@ -40,6 +40,7 @@ from cflib.crazyflie.syncLogger import SyncLogger
 
 # Only output errors from the logging framework
 logging.basicConfig(level=logging.ERROR)
+URI = 'radio://0/40/250K'
 
 
 if __name__ == '__main__':
@@ -61,7 +62,7 @@ if __name__ == '__main__':
         lg_stab.add_variable('stabilizer.yaw', 'float')
 
         cf = Crazyflie(rw_cache='./cache')
-        with SyncCrazyflie(available[0][0], cf=cf) as scf:
+        with SyncCrazyflie(URI, cf=cf) as scf:
             with SyncLogger(scf, lg_stab) as logger:
                 endTime = time.time() + 10
 
