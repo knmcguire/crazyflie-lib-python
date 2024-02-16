@@ -98,7 +98,7 @@ class CrtpZenohBridge:
         print(buf)
 
         # Publish to zenoh
-        self.pub.put(buf)
+        self.pub.put({'timestamp': timestamp, 'data': data, 'logconf': logconf.name})
 
     def _connection_failed(self, link_uri, msg):
         print('Connection to %s failed: %s' % (link_uri, msg))
