@@ -49,7 +49,7 @@ class CrtpZenohBridge:
         zenoh.init_logger()
         self._zenoh_session = zenoh.open(zenoh.Config())
         self.pub = self._zenoh_session.declare_publisher("cf/logging")
-        
+
         # Initialization Crazyflie connection callbacks
         self._cf = Crazyflie(rw_cache='./cache')
         self._cf.connected.add_callback(self._connected)
@@ -60,16 +60,22 @@ class CrtpZenohBridge:
         self._cf.open_link(link_uri)
         self.is_connected = True
 
+    def _zenoh_cb_start_logging(self, query):
+        print(f">> [Queryable ] Received Query '{query.selector}'" + (f" with value: {query.value.payload}" if query.value is not None else ""))
+        query.reply(zenoh.Sample("cf/start_logging", 'Success!'))
+        self._lg_bat.start()
+
     def _connected(self, link_uri):
         print('Connected to %s' % link_uri)
-        self._lg_stab = LogConfig(name='battery', period_in_ms=100)
-        self._lg_stab.add_variable('pm.vbat', 'FP16')
+        self._lg_bat= LogConfig(name='battery', period_in_ms=100)
+        self._lg_bat.add_variable('pm.vbat', 'FP16')
 
         try:
-            self._cf.log.add_config(self._lg_stab)
-            self._lg_stab.data_received_cb.add_callback(self._stab_log_data)
-            self._lg_stab.error_cb.add_callback(self._stab_log_error)
-            self._lg_stab.start()
+            self._cf.log.add_config(self._lg_bat)
+            self._lg_bat.data_received_cb.add_callback(self._stab_log_data)
+            self._lg_bat.error_cb.add_callback(self._stab_log_error)
+            self.quaryable = self._zenoh_session.declare_queryable("cf/start_logging", self._zenoh_cb_start_logging, False)
+
         except KeyError as e:
             print('Could not start log configuration,'
                   '{} not found in TOC'.format(str(e)))
