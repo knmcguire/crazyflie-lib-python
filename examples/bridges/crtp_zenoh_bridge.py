@@ -65,6 +65,11 @@ class CrtpZenohBridge:
         query.reply(zenoh.Sample("cf/start_logging", 'Success!'))
         self._lg_bat.start()
 
+    def _zenoh_cb_stop_logging(self, query):
+        print(f">> [Queryable ] Received Query '{query.selector}'" + (f" with value: {query.value.payload}" if query.value is not None else ""))
+        query.reply(zenoh.Sample("cf/stop_logging", 'Success!'))
+        self._lg_bat.stop()
+
     def _connected(self, link_uri):
         print('Connected to %s' % link_uri)
         self._lg_bat= LogConfig(name='battery', period_in_ms=100)
@@ -74,17 +79,14 @@ class CrtpZenohBridge:
             self._cf.log.add_config(self._lg_bat)
             self._lg_bat.data_received_cb.add_callback(self._stab_log_data)
             self._lg_bat.error_cb.add_callback(self._stab_log_error)
-            self.quaryable = self._zenoh_session.declare_queryable("cf/start_logging", self._zenoh_cb_start_logging, False)
+            self.quaryable_start_logging = self._zenoh_session.declare_queryable("cf/start_logging", self._zenoh_cb_start_logging, False)
+            self.quaryable_stop_logging = self._zenoh_session.declare_queryable("cf/stop_logging", self._zenoh_cb_stop_logging, False)
 
         except KeyError as e:
             print('Could not start log configuration,'
                   '{} not found in TOC'.format(str(e)))
         except AttributeError:
             print('Could not add Stabilizer log config, bad configuration.')
-
-        # Start a timer to disconnect in 10s
-        t = Timer(5, self._cf.close_link)
-        t.start()
 
     def _stab_log_error(self, logconf, msg):
         print('Error when logging %s: %s' % (logconf.name, msg))
@@ -109,6 +111,8 @@ class CrtpZenohBridge:
         print('Disconnected from %s' % link_uri)
         self.is_connected = False
         self.pub.undeclare()
+        self.quaryable_start_logging.undeclare()
+        self.quaryable_stop_logging.undeclare()
         self._zenoh_session.close()
 
 
@@ -118,7 +122,13 @@ if __name__ == '__main__':
 
     le = CrtpZenohBridge(uri)
 
-    while le.is_connected:
-        time.sleep(1)
-    
+    print("Enter 'q' to quit...")
+
+    try:
+        while le.is_connected:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
+        le._cf.close_link()
+
     
