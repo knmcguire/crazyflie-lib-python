@@ -28,6 +28,7 @@ roll pitch yaw and sends it over as a zenoh publication.
 import logging
 import time
 from threading import Timer
+import json
 
 import cflib.crtp  # noqa
 from cflib.crazyflie import Crazyflie
@@ -59,26 +60,68 @@ class CrtpZenohBridge:
         print('Connecting to %s' % link_uri)
         self._cf.open_link(link_uri)
         self.is_connected = True
+        self.lg_confs = {}
 
     def _zenoh_cb_start_logging(self, query):
         print(f">> [Queryable ] Received Query '{query.selector}'" + (f" with value: {query.value.payload}" if query.value is not None else ""))
-        query.reply(zenoh.Sample("cf/start_logging", 'Success!'))
-        self._lg_bat.start()
+        
+        dict_obj = json.loads(query.value.payload)
+
+        try:
+            dict_obj = json.loads(query.value.payload)
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON: {query.value.payload}")
+            query.reply(zenoh.Sample("cf/start_logging", 'Error!'))
+            return
+    
+        name = dict_obj.get('name', None)
+
+
+        if name is None:
+            query.reply(zenoh.Sample("cf/start_logging", 'Error!'))
+            return
+        
+        
+        if name in self.lg_confs:
+            self.lg_confs[name].start()
+            query.reply(zenoh.Sample("cf/start_logging", 'Success!'))
+        else:
+            query.reply(zenoh.Sample("cf/start_logging", 'Error!'))
 
     def _zenoh_cb_stop_logging(self, query):
         print(f">> [Queryable ] Received Query '{query.selector}'" + (f" with value: {query.value.payload}" if query.value is not None else ""))
-        query.reply(zenoh.Sample("cf/stop_logging", 'Success!'))
-        self._lg_bat.stop()
+
+        try:
+            dict_obj = json.loads(query.value.payload)
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON: {query.value.payload}")
+            query.reply(zenoh.Sample("cf/stop_logging", 'Error!'))
+            return
+        
+        name = dict_obj.get('name', None)
+
+        if name is None:
+            query.reply(zenoh.Sample("cf/start_logging", 'Error!'))
+            return
+        
+        name = dict_obj['name']
+        if name in self.lg_confs:
+            self.lg_confs[name].stop()
+            query.reply(zenoh.Sample("cf/stop_logging", 'Success!'))
+        else:
+            query.reply(zenoh.Sample("cf/stop_logging", 'Error!'))
 
     def _connected(self, link_uri):
         print('Connected to %s' % link_uri)
-        self._lg_bat= LogConfig(name='battery', period_in_ms=100)
-        self._lg_bat.add_variable('pm.vbat', 'FP16')
+        _lg_bat= LogConfig(name='battery', period_in_ms=100)
+        _lg_bat.add_variable('pm.vbat', 'FP16')
+
+        self.lg_confs = {'battery' : _lg_bat}
 
         try:
-            self._cf.log.add_config(self._lg_bat)
-            self._lg_bat.data_received_cb.add_callback(self._stab_log_data)
-            self._lg_bat.error_cb.add_callback(self._stab_log_error)
+            self._cf.log.add_config(_lg_bat)
+            _lg_bat.data_received_cb.add_callback(self._stab_log_data)
+            _lg_bat.error_cb.add_callback(self._stab_log_error)
             self.quaryable_start_logging = self._zenoh_session.declare_queryable("cf/start_logging", self._zenoh_cb_start_logging, False)
             self.quaryable_stop_logging = self._zenoh_session.declare_queryable("cf/stop_logging", self._zenoh_cb_stop_logging, False)
 
