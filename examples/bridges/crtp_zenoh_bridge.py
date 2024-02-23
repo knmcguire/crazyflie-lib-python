@@ -67,8 +67,7 @@ class CrtpZenohBridge:
 
         self.quaryable_start_logging = self._zenoh_session.declare_queryable("cf/start_logging", self._zenoh_cb_start_logging, False)
         self.quaryable_stop_logging = self._zenoh_session.declare_queryable("cf/stop_logging", self._zenoh_cb_stop_logging, False)
-        self.quaryable_start_log_block = self._zenoh_session.declare_queryable("cf/setup_logging", self._zenoh_setup_log_block, False)
-
+        self.quaryable_setup_logging = self._zenoh_session.declare_queryable("cf/setup_logging", self._zenoh_setup_log_block, False)
 
     def _log_error(self, logconf, msg):
         print('Error when logging %s: %s' % (logconf.name, msg))
@@ -95,8 +94,8 @@ class CrtpZenohBridge:
         self.pub.undeclare()
         self.quaryable_start_logging.undeclare()
         self.quaryable_stop_logging.undeclare()
+        self.quaryable_setup_logging.undeclare()
         self._zenoh_session.close()
-
 
     ## Setup Zenoh Queryables
     def _zenoh_setup_log_block(self, query):
@@ -193,7 +192,7 @@ if __name__ == '__main__':
 
     le = CrtpZenohBridge(uri)
 
-    print("Enter 'q' to quit...")
+    print("Enter 'ctrl-c' to quit...")
 
     try:
         while le.is_connected:
