@@ -62,6 +62,84 @@ class CrtpZenohBridge:
         self.is_connected = True
         self.lg_confs = {}
 
+    def _connected(self, link_uri):
+        print('Connected to %s' % link_uri)
+
+        self.quaryable_start_logging = self._zenoh_session.declare_queryable("cf/start_logging", self._zenoh_cb_start_logging, False)
+        self.quaryable_stop_logging = self._zenoh_session.declare_queryable("cf/stop_logging", self._zenoh_cb_stop_logging, False)
+        self.quaryable_start_log_block = self._zenoh_session.declare_queryable("cf/setup_logging", self._zenoh_setup_log_block, False)
+
+
+    def _log_error(self, logconf, msg):
+        print('Error when logging %s: %s' % (logconf.name, msg))
+
+    def _log_data(self, timestamp, data, logconf):
+        buf = f'[{timestamp}][{logconf.name}]: '
+        for name, value in data.items():
+            buf += f'{name}: {value:3.3f} '
+        print(buf)
+
+        # Publish to zenoh
+        self.pub.put({'timestamp': timestamp, 'data': data, 'logconf': logconf.name})
+
+    def _connection_failed(self, link_uri, msg):
+        print('Connection to %s failed: %s' % (link_uri, msg))
+        self.is_connected = False
+
+    def _connection_lost(self, link_uri, msg):
+        print('Connection to %s lost: %s' % (link_uri, msg))
+
+    def _disconnected(self, link_uri):
+        print('Disconnected from %s' % link_uri)
+        self.is_connected = False
+        self.pub.undeclare()
+        self.quaryable_start_logging.undeclare()
+        self.quaryable_stop_logging.undeclare()
+        self._zenoh_session.close()
+
+
+    ## Setup Zenoh Queryables
+    def _zenoh_setup_log_block(self, query):
+        print(f">> [Queryable ] Received Query '{query.selector}'" + (f" with value: {query.value.payload}" if query.value is not None else ""))
+
+        try:
+            dict_obj = json.loads(query.value.payload)
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON: {query.value.payload}")
+            query.reply(zenoh.Sample("cf/stop_logging", 'Error!'))
+            return
+        
+        _lg_custom= LogConfig(name='battery', period_in_ms=100)
+
+        name = dict_obj.get('name', None)
+        logs = dict_obj.get('logs', None)
+
+        if name is None or logs is None:
+            query.reply(zenoh.Sample("cf/setup_logging", 'Error!'))
+            return
+
+        for log in logs:
+            name_log = log.get('name', None)
+            type_log = log.get('type', None)
+            _lg_custom.add_variable(name_log, type_log)
+
+        self.lg_confs[name] = _lg_custom
+
+        try:
+            self._cf.log.add_config(_lg_custom)
+            _lg_custom.data_received_cb.add_callback(self._log_data)
+            _lg_custom.error_cb.add_callback(self._log_error)
+            query.reply(zenoh.Sample("cf/setup_logging", 'Success!'))
+
+        except KeyError as e:
+            print('Could not start log configuration,'
+                  '{} not found in TOC'.format(str(e)))
+            query.reply(zenoh.Sample("cf/setup_logging", 'Error!'))
+        except AttributeError:
+            print('Could not add Log config, bad configuration.')
+            query.reply(zenoh.Sample("cf/setup_logging", 'Error!'))
+
+
     def _zenoh_cb_start_logging(self, query):
         print(f">> [Queryable ] Received Query '{query.selector}'" + (f" with value: {query.value.payload}" if query.value is not None else ""))
         
@@ -107,82 +185,6 @@ class CrtpZenohBridge:
             query.reply(zenoh.Sample("cf/stop_logging", 'Success!'))
         else:
             query.reply(zenoh.Sample("cf/stop_logging", 'Error!'))
-
-    def _connected(self, link_uri):
-        print('Connected to %s' % link_uri)
-
-        self.quaryable_start_logging = self._zenoh_session.declare_queryable("cf/start_logging", self._zenoh_cb_start_logging, False)
-        self.quaryable_stop_logging = self._zenoh_session.declare_queryable("cf/stop_logging", self._zenoh_cb_stop_logging, False)
-        self.quaryable_start_log_block = self._zenoh_session.declare_queryable("cf/setup_logging", self._zenoh_setup_log_block, False)
-
-
-    def _log_error(self, logconf, msg):
-        print('Error when logging %s: %s' % (logconf.name, msg))
-
-    def _log_data(self, timestamp, data, logconf):
-        buf = f'[{timestamp}][{logconf.name}]: '
-        for name, value in data.items():
-            buf += f'{name}: {value:3.3f} '
-        print(buf)
-
-        # Publish to zenoh
-        self.pub.put({'timestamp': timestamp, 'data': data, 'logconf': logconf.name})
-
-    def _zenoh_setup_log_block(self, query):
-        print(f">> [Queryable ] Received Query '{query.selector}'" + (f" with value: {query.value.payload}" if query.value is not None else ""))
-
-        try:
-            dict_obj = json.loads(query.value.payload)
-        except json.JSONDecodeError:
-            print(f"Error decoding JSON: {query.value.payload}")
-            query.reply(zenoh.Sample("cf/stop_logging", 'Error!'))
-            return
-        
-        _lg_custom= LogConfig(name='battery', period_in_ms=100)
-
-        name = dict_obj.get('name', None)
-        logs = dict_obj.get('logs', None)
-
-        if name is None or logs is None:
-            query.reply(zenoh.Sample("cf/setup_logging", 'Error!'))
-            return
-
-        for log in logs:
-            name_log = log.get('name', None)
-            type_log = log.get('type', None)
-            _lg_custom.add_variable(name_log, type_log)
-
-        self.lg_confs[name] = _lg_custom
-
-        try:
-            self._cf.log.add_config(_lg_custom)
-            _lg_custom.data_received_cb.add_callback(self._log_data)
-            _lg_custom.error_cb.add_callback(self._log_error)
-            query.reply(zenoh.Sample("cf/setup_logging", 'Success!'))
-
-        except KeyError as e:
-            print('Could not start log configuration,'
-                  '{} not found in TOC'.format(str(e)))
-            query.reply(zenoh.Sample("cf/setup_logging", 'Error!'))
-        except AttributeError:
-            print('Could not add Log config, bad configuration.')
-            query.reply(zenoh.Sample("cf/setup_logging", 'Error!'))
-
-
-    def _connection_failed(self, link_uri, msg):
-        print('Connection to %s failed: %s' % (link_uri, msg))
-        self.is_connected = False
-
-    def _connection_lost(self, link_uri, msg):
-        print('Connection to %s lost: %s' % (link_uri, msg))
-
-    def _disconnected(self, link_uri):
-        print('Disconnected from %s' % link_uri)
-        self.is_connected = False
-        self.pub.undeclare()
-        self.quaryable_start_logging.undeclare()
-        self.quaryable_stop_logging.undeclare()
-        self._zenoh_session.close()
 
 
 if __name__ == '__main__':
